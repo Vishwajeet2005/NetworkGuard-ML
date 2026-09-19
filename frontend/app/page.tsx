@@ -1,5 +1,5 @@
 "use client";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, Legend, BarChart, Bar } from "recharts";
 import { Shield, Filter, Search, ChevronDown, Activity, Clock, Server, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 
@@ -18,6 +18,21 @@ export default function Dashboard() {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const handleAction = async (alertId: number, status: string) => {
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      await fetch(`${API_BASE}/alerts/${alertId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      alert(`Alert ${alertId} marked as ${status}`);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update alert");
+    }
   };
 
   const isPausedRef = useRef(isPaused);
@@ -145,7 +160,7 @@ export default function Dashboard() {
       </header>
 
       {/* Telemetry Overview */}
-      <section className="flex-none grid grid-cols-5 divide-x divide-[#1a1a1a] border-b border-[#1a1a1a] bg-[#050505]">
+      <section className="flex-none grid grid-cols-6 divide-x divide-[#1a1a1a] border-b border-[#1a1a1a] bg-[#050505]">
         <div className="p-4">
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Total Packets Analyzed</div>
           <div className="text-xl font-mono text-white">{stats.total_predictions?.toLocaleString() || 0}</div>
@@ -171,6 +186,19 @@ export default function Dashboard() {
             Model F1 Score
           </div>
           <div className="text-xl font-mono text-white">{activeModel?.macro_f1?.toFixed(3) || 'N/A'}</div>
+        </div>
+        <div className="bg-[#050505] p-4 flex flex-col">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2 flex items-center justify-between">
+            Attack Class Dist.
+          </div>
+          <div style={{ height: 60 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={charts.severity_distribution}>
+                <Bar dataKey="count" fill="#ef4444" isAnimationActive={false} />
+                <Tooltip cursor={{fill: '#1a1a1a'}} contentStyle={{backgroundColor: '#000', borderColor: '#333', fontSize: '12px', color: '#fff'}} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
         <div className="bg-[#050505] p-4 flex flex-col">
           <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2 flex items-center justify-between">
@@ -263,6 +291,27 @@ export default function Dashboard() {
                   <span className="text-slate-500 font-mono text-xs">{selectedPacket.timestamp}</span>
                 </div>
               </div>
+
+              {/* Actions (Only if Alert Exists) */}
+              {selectedPacket.alert_id && (
+                <div>
+                  <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Actions</h3>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => handleAction(selectedPacket.alert_id, "ACKNOWLEDGED")}
+                      className="flex-1 py-1.5 bg-[#0a0a0a] border border-[#1a1a1a] text-slate-300 rounded text-xs font-medium hover:bg-[#111] hover:text-white transition-colors"
+                    >
+                      Acknowledge
+                    </button>
+                    <button 
+                      onClick={() => handleAction(selectedPacket.alert_id, "RESOLVED")}
+                      className="flex-1 py-1.5 bg-[#0a0a0a] border border-[#1a1a1a] text-slate-300 rounded text-xs font-medium hover:bg-[#111] hover:text-white transition-colors"
+                    >
+                      Resolve
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Feature Extraction */}
               <div>

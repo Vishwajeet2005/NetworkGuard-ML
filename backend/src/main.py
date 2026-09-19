@@ -740,9 +740,16 @@ def get_dashboard_charts(db: Session = Depends(get_db)):
 @app.get("/dashboard/telemetry")
 def get_dashboard_telemetry(db: Session = Depends(get_db)):
     preds = db.query(Prediction).order_by(Prediction.timestamp.desc()).limit(200).all()
+    
+    # Batch fetch alerts for these predictions
+    pred_ids = [p.id for p in preds]
+    alerts = db.query(Alert).filter(Alert.prediction_id.in_(pred_ids)).all()
+    alert_map = {a.prediction_id: a.id for a in alerts}
+    
     return [
         {
             "id": p.id,
+            "alert_id": alert_map.get(p.id),
             "timestamp": p.timestamp.strftime("%H:%M:%S"),
             "protocol": p.features.get("protocol_type", "TCP") if isinstance(p.features, dict) else "TCP",
             "src": f"192.168.1.{p.id % 255}",
