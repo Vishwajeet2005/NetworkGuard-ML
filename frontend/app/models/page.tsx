@@ -248,7 +248,7 @@ export default function ModelsPage() {
                               <div>
                                 <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
                                   Confusion Matrix
-                                  {m.roc_auc && <span className="text-white">ROC-AUC: {m.roc_auc.toFixed(4)}</span>}
+                                  {m.roc_auc != null ? <span className="text-white">ROC-AUC: {m.roc_auc.toFixed(4)}</span> : null}
                                 </h3>
                                 <div className="border border-[#1a1a1a] rounded p-2 bg-[#050505] inline-block">
                                   <div className="grid grid-cols-6 gap-px bg-[#111]">
