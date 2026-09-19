@@ -194,8 +194,9 @@ export default function Dashboard() {
           <div style={{ height: 60 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={charts.severity_distribution}>
-                <XAxis dataKey="label" hide />
-                <Bar dataKey="val" fill="#ef4444" isAnimationActive={false} />
+                <XAxis dataKey="label" stroke="#555" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis hide domain={[0, 'dataMax']} />
+                <Bar dataKey="val" fill="#ef4444" radius={[2, 2, 0, 0]} isAnimationActive={false} />
                 <Tooltip cursor={{fill: '#1a1a1a'}} contentStyle={{backgroundColor: '#000', borderColor: '#333', fontSize: '12px', color: '#fff'}} />
               </BarChart>
             </ResponsiveContainer>
