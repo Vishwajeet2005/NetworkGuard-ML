@@ -1,11 +1,15 @@
 "use client";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Upload, Database as DbIcon, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<any[]>([]);
   const [uploadStatus, setUploadStatus] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
+  const [expandedDataset, setExpandedDataset] = useState<number | null>(null);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   const fetchDatasets = async () => {
@@ -14,6 +18,26 @@ export default function DatasetsPage() {
       if (res.ok) setDatasets(await res.json());
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleExpand = async (id: number) => {
+    if (expandedDataset === id) {
+      setExpandedDataset(null);
+      setPreviewData(null);
+      return;
+    }
+    setExpandedDataset(id);
+    setPreviewLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/datasets/${id}`);
+      if (res.ok) {
+        setPreviewData(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPreviewLoading(false);
     }
   };
 
@@ -126,13 +150,50 @@ export default function DatasetsPage() {
               </thead>
               <tbody className="divide-y divide-[#1a1a1a] bg-black">
                 {datasets.map((ds: any) => (
-                  <tr key={ds.id} className="hover:bg-[#0a0a0a] cursor-pointer">
-                    <td className="px-4 py-2 text-slate-300 font-medium">{ds.name}</td>
-                    <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.row_count?.toLocaleString() ?? '—'}</td>
-                    <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.feature_count ?? '—'}</td>
-                    <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.label_column ?? '—'}</td>
-                    <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.created_at ? new Date(ds.created_at).toLocaleString() : '—'}</td>
-                  </tr>
+                  <React.Fragment key={ds.id}>
+                    <tr onClick={() => handleExpand(ds.id)} className={`hover:bg-[#0a0a0a] cursor-pointer ${expandedDataset === ds.id ? 'bg-[#0a0a0a]' : ''}`}>
+                      <td className="px-4 py-2 text-slate-300 font-medium">{ds.name}</td>
+                      <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.row_count?.toLocaleString() ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.feature_count ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.label_column ?? '—'}</td>
+                      <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.created_at ? new Date(ds.created_at).toLocaleString() : '—'}</td>
+                    </tr>
+                    {expandedDataset === ds.id && (
+                      <tr className="bg-black border-b border-[#1a1a1a]">
+                        <td colSpan={5} className="p-0">
+                          {previewLoading ? (
+                            <div className="p-8 flex justify-center"><Loader2 className="w-5 h-5 text-slate-500 animate-spin" /></div>
+                          ) : previewData?.preview ? (
+                            <div className="p-6">
+                              <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Dataset Preview (First 5 Rows)</h3>
+                              <div className="overflow-x-auto border border-[#1a1a1a] rounded">
+                                <table className="w-full text-left border-collapse">
+                                  <thead className="bg-[#050505]">
+                                    <tr>
+                                      {Object.keys(previewData.preview[0] || {}).map(k => (
+                                        <th key={k} className="px-3 py-1.5 text-[10px] font-medium text-slate-500 border-b border-[#1a1a1a] whitespace-nowrap uppercase tracking-wider">{k}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-[#1a1a1a]">
+                                    {previewData.preview.map((row: any, i: number) => (
+                                      <tr key={i} className="hover:bg-[#0a0a0a]">
+                                        {Object.values(row).map((v: any, j: number) => (
+                                          <td key={j} className="px-3 py-1.5 font-mono text-xs text-slate-400 whitespace-nowrap">{String(v)}</td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-8 text-center text-slate-500 text-sm">Failed to load preview data.</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
                 {datasets.length === 0 && (
                   <tr>

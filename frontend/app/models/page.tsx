@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { BrainCircuit, ChevronDown, ChevronRight } from "lucide-react";
+import Link from "next/link";
 
 export default function ModelsPage() {
   const [datasets, setDatasets] = useState<any[]>([]);
@@ -186,7 +187,9 @@ export default function ModelsPage() {
                         <tr className="bg-black border-b border-[#1a1a1a]">
                           <td colSpan={7} className="p-6">
                             <div className="flex items-center justify-between mb-4 border-b border-[#1a1a1a] pb-4">
-                              <div className="text-xs text-slate-400 font-mono">Model ID: {m.id} | Trained on: {m.dataset_name}</div>
+                              <div className="text-xs text-slate-400 font-mono">
+                                Model ID: {m.id} | Trained on: <Link href="/datasets" className="text-slate-200 hover:text-white underline decoration-slate-500 underline-offset-4">{m.dataset_name}</Link>
+                              </div>
                               <div className="flex items-center gap-2">
                                 {m.status === "READY" && (
                                   <button
