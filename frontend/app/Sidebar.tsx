@@ -15,7 +15,7 @@ export default function Sidebar() {
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("networkguard_auth");
     router.push("/login");
   };
 
