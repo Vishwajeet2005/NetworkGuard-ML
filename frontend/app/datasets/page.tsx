@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { Upload, Database as DbIcon, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Upload, Database as DbIcon, CheckCircle2, Loader2, AlertCircle, Trash2 } from "lucide-react";
 
 export default function DatasetsPage() {
   const [datasets, setDatasets] = useState<any[]>([]);
@@ -42,6 +42,24 @@ export default function DatasetsPage() {
   };
 
   useEffect(() => { fetchDatasets(); }, []);
+
+  const handleDeleteDataset = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent expand
+    if (!confirm("Are you sure you want to delete this dataset?")) return;
+    
+    try {
+      const res = await fetch(`${API_BASE}/datasets/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        if (expandedDataset === id) setExpandedDataset(null);
+        fetchDatasets();
+      } else {
+        alert("Failed to delete dataset. It might be linked to an existing model.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error deleting dataset.");
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -146,6 +164,7 @@ export default function DatasetsPage() {
                   <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Features</th>
                   <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Label Column</th>
                   <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Uploaded At</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a] text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1a1a1a] bg-black">
@@ -157,10 +176,19 @@ export default function DatasetsPage() {
                       <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.feature_count ?? '—'}</td>
                       <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.label_column ?? '—'}</td>
                       <td className="px-4 py-2 font-mono text-slate-400 text-xs">{ds.created_at ? new Date(ds.created_at).toLocaleString() : '—'}</td>
+                      <td className="px-4 py-2 text-right">
+                        <button 
+                          onClick={(e) => handleDeleteDataset(ds.id, e)}
+                          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded transition-colors"
+                          title="Delete Dataset"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                     {expandedDataset === ds.id && (
                       <tr className="bg-black border-b border-[#1a1a1a]">
-                        <td colSpan={5} className="p-0">
+                        <td colSpan={6} className="p-0">
                           {previewLoading ? (
                             <div className="p-8 flex justify-center"><Loader2 className="w-5 h-5 text-slate-500 animate-spin" /></div>
                           ) : previewData?.preview ? (

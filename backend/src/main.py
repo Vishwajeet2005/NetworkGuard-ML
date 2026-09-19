@@ -395,6 +395,22 @@ def get_dataset(id: int, db: Session = Depends(get_db)):
         "preview": df.head(5).to_dict(orient="records")
     }
 
+@app.delete("/datasets/{id}")
+def delete_dataset(id: int, db: Session = Depends(get_db)):
+    dataset = db.query(Dataset).filter(Dataset.id == id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+        
+    try:
+        if os.path.exists(dataset.file_path):
+            os.remove(dataset.file_path)
+    except Exception as e:
+        print(f"Failed to delete file {dataset.file_path}: {e}")
+        
+    db.delete(dataset)
+    db.commit()
+    return {"status": "success", "detail": "Dataset deleted successfully"}
+
 @app.get("/models")
 def get_models(db: Session = Depends(get_db)):
     models = db.query(Model).filter(Model.status != "DELETED").all()
