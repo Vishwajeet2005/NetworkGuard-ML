@@ -41,6 +41,7 @@ app.add_middleware(
 ARTIFACTS_PATH = os.getenv("ARTIFACTS_PATH", "/app/artifacts")
 UPLOADS_PATH = os.getenv("UPLOADS_PATH", "/app/uploads")
 monitoring_active = True
+model_lock = threading.Lock()
 
 try:
     preprocessor = joblib.load(os.path.join(ARTIFACTS_PATH, "preprocessor.joblib"))
@@ -317,25 +318,44 @@ def train_model_task(dataset_id: int, model_name: str, algorithm: str, model_id:
 # Endpoints
 @app.post("/datasets/upload")
 def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    file_path = os.path.join(UPLOADS_PATH, file.filename)
+    # SECURITY FIX: Prevent Path Traversal by extracting only the basename
+    import uuid
+    safe_filename = os.path.basename(file.filename)
+    if not safe_filename or '..' in safe_filename:
+        safe_filename = f"dataset_{uuid.uuid4().hex}.csv"
+        
+    if not safe_filename.lower().endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Only CSV files are allowed.")
+        
+    file_path = os.path.join(UPLOADS_PATH, safe_filename)
+    
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
         
-    df = pd.read_csv(file_path)
-    row_count, feature_count = df.shape
+    # MEMORY FIX: Only read the first 5 rows for metadata extraction to prevent OOM
+    try:
+        preview_df = pd.read_csv(file_path, nrows=5)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {e}")
+        
+    feature_count = preview_df.shape[1]
     
-    label_cols = [c for c in df.columns if c.lower() in ['label', 'class', 'attack_cat']]
+    # Calculate row count without loading into RAM
+    row_count = sum(1 for _ in open(file_path, 'rb')) - 1
+    
+    label_cols = [c for c in preview_df.columns if c.lower() in ['label', 'class', 'attack_cat']]
     label_column = label_cols[0] if label_cols else None
     
-    missing_values = int(df.isnull().sum().sum())
-    column_names = df.columns.tolist()
+    # Estimate missing values for preview
+    missing_values = int(preview_df.isnull().sum().sum())
+    column_names = preview_df.columns.tolist()
     
     # Fill nan to prevent json errors
-    df = df.fillna("")
-    preview = df.head(5).to_dict(orient="records")
+    preview_df = preview_df.fillna("")
+    preview = preview_df.to_dict(orient="records")
     
     dataset = Dataset(
-        name=file.filename,
+        name=safe_filename,
         file_path=file_path,
         row_count=row_count,
         feature_count=feature_count,
@@ -480,8 +500,9 @@ def activate_model(id: int, db: Session = Depends(get_db)):
     global ml_model, preprocessor
     try:
         if model.model_path and model.preprocessor_path:
-            ml_model = joblib.load(model.model_path)
-            preprocessor = joblib.load(model.preprocessor_path)
+            with model_lock:
+                ml_model = joblib.load(model.model_path)
+                preprocessor = joblib.load(model.preprocessor_path)
             print(f"Hot-reloaded model {model.name} into memory.")
     except Exception as e:
         print(f"Failed to hot-reload model: {e}")
@@ -515,20 +536,10 @@ def get_models_comparison(db: Session = Depends(get_db)):
 
 def get_loaded_model(model_id: int, db: Session):
     model_record = db.query(Model).filter(Model.id == model_id).first()
+    is_xgb = model_record.algorithm == 'XGBoost' if model_record else True
     
-    m_model = ml_model
-    m_preprocessor = preprocessor
-    is_xgb = True
-    
-    if model_record and model_record.model_path and model_record.preprocessor_path:
-        try:
-            m_model = joblib.load(model_record.model_path)
-            m_preprocessor = joblib.load(model_record.preprocessor_path)
-            is_xgb = model_record.algorithm == 'XGBoost'
-        except:
-            pass
-            
-    return m_model, m_preprocessor, is_xgb
+    with model_lock:
+        return ml_model, preprocessor, is_xgb
 
 @app.post("/predict")
 def predict(req: PredictRequest, db: Session = Depends(get_db)):
