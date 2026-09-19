@@ -12,8 +12,11 @@ Base = declarative_base()
 class Dataset(Base):
     __tablename__ = "datasets"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    path = Column(String)
+    name = Column(String)
+    file_path = Column(String)
+    row_count = Column(Integer, nullable=True)
+    feature_count = Column(Integer, nullable=True)
+    label_column = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class Model(Base):
@@ -22,6 +25,13 @@ class Model(Base):
     name = Column(String, index=True)
     version = Column(String)
     status = Column(String)
+    algorithm = Column(String, nullable=True)
+    dataset_id = Column(Integer, nullable=True)
+    preprocessor_path = Column(String, nullable=True)
+    model_path = Column(String, nullable=True)
+    feature_schema = Column(JSON, nullable=True)
+    training_date = Column(DateTime, nullable=True)
+    dataset_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class ModelMetric(Base):
@@ -33,6 +43,10 @@ class ModelMetric(Base):
     recall = Column(Float)
     f1 = Column(Float)
     support = Column(Integer)
+    accuracy = Column(Float, nullable=True)
+    roc_auc = Column(Float, nullable=True)
+    confusion_matrix = Column(JSON, nullable=True)
+    full_report = Column(JSON, nullable=True)
 
 class Prediction(Base):
     __tablename__ = "predictions"

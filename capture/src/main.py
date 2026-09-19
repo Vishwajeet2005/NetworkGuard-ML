@@ -33,7 +33,7 @@ def main():
                 continue
                 
             features = {}
-            for i in range(41):
+            for i in range(42):
                 col = NSL_KDD_COLUMNS[i]
                 val = parts[i]
                 
@@ -43,7 +43,7 @@ def main():
                 except ValueError:
                     features[col] = val
                     
-            payload = {"features": features}
+            payload = {"model_id": 1, "features": features}
             
             try:
                 response = requests.post(BACKEND_URL, json=payload, timeout=2.0)

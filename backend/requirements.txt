@@ -5,3 +5,9 @@ psycopg2-binary
 alembic
 pydantic
 pydantic-settings
+scikit-learn
+xgboost
+joblib
+pandas
+numpy
+python-multipart

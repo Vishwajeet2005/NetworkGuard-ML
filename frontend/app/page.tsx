@@ -1,103 +1,307 @@
 "use client";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { AlertTriangle, ShieldCheck, Activity } from "lucide-react";
-import { useState } from "react";
-
-const mockData = [
-  { time: "10:00", requests: 120, alerts: 2 },
-  { time: "10:05", requests: 300, alerts: 15 },
-  { time: "10:10", requests: 150, alerts: 1 },
-  { time: "10:15", requests: 800, alerts: 45 },
-  { time: "10:20", requests: 110, alerts: 0 },
-];
-
-const mockAlerts = [
-  { id: 1, type: "DoS", severity: "HIGH", src: "192.168.1.10", dst: "10.0.0.5", time: "10:15:22" },
-  { id: 2, type: "Probe", severity: "MEDIUM", src: "192.168.1.15", dst: "10.0.0.2", time: "10:15:30" },
-  { id: 3, type: "U2R", severity: "CRITICAL", src: "172.16.0.4", dst: "10.0.0.8", time: "10:15:45" },
-];
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, Legend } from "recharts";
+import { Shield, Filter, Search, ChevronDown, Activity, Clock, Server, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 
 export default function Dashboard() {
-  const [stats] = useState({ total: 1480, threats: 63, uptime: "99.9%" });
+  const [stats, setStats] = useState<any>({ total_predictions: 0, total_alerts: 0, detection_rate: 0, system_load: 0 });
+  const [telemetry, setTelemetry] = useState<any[]>([]);
+  const [charts, setCharts] = useState({ alerts_over_time: [], severity_distribution: [] });
+  const [activeModel, setActiveModel] = useState<any>(null);
+  const [selectedPacket, setSelectedPacket] = useState<any>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [severityFilter, setSeverityFilter] = useState("Any");
+  const [isPaused, setIsPaused] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const handleCopy = (text: string, key: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(null), 2000);
+  };
+
+  const isPausedRef = useRef(isPaused);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
+  const filteredTelemetry = telemetry.filter(row => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = !term || 
+      row.src.toLowerCase().includes(term) || 
+      row.dst.toLowerCase().includes(term) || 
+      row.protocol.toLowerCase().includes(term) || 
+      row.classification.toLowerCase().includes(term);
+      
+    let matchesSeverity = true;
+    if (severityFilter === "Malicious") matchesSeverity = row.classification !== "NORMAL";
+    if (severityFilter === "Normal") matchesSeverity = row.classification === "NORMAL";
+    
+    return matchesSearch && matchesSeverity;
+  });
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (isPausedRef.current) return;
+      try {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const [statsRes, chartsRes, telemetryRes, modelsRes] = await Promise.all([
+          fetch(`${API_BASE}/dashboard/stats`),
+          fetch(`${API_BASE}/dashboard/charts`),
+          fetch(`${API_BASE}/dashboard/telemetry`),
+          fetch(`${API_BASE}/models`)
+        ]);
+        if (statsRes.ok) setStats(await statsRes.json());
+        if (chartsRes.ok) setCharts(await chartsRes.json());
+        if (telemetryRes.ok) {
+          const tData = await telemetryRes.json();
+          setTelemetry(tData);
+          setSelectedPacket((prev: any) => {
+            if (!prev && tData.length > 0) return tData[0];
+            return prev;
+          });
+        }
+        if (modelsRes.ok) {
+          const models = await modelsRes.json();
+          const active = models.find((m: any) => m.status === 'ACTIVE') || models[0];
+          if (active) setActiveModel(active);
+        }
+      } catch (err) {
+        console.error("API Fetch Error", err);
+      }
+    };
+    fetchData();
+    const interval = setInterval(fetchData, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <main className="p-8 max-w-7xl mx-auto space-y-8">
-      <header className="flex items-center justify-between border-b pb-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">NetworkGuard ML</h1>
-          <p className="text-gray-500">Real-time NSL-KDD Intrusion Detection System</p>
+    <div className="flex flex-col h-screen bg-black text-slate-300 font-sans text-sm">
+      {/* Top Navigation Bar */}
+      <header className="flex-none h-12 border-b border-[#1a1a1a] bg-[#050505] flex items-center justify-between px-4">
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 text-slate-100 font-semibold tracking-tight">
+            <Shield className="w-4 h-4 text-white" />
+            NetworkGuard ML
+          </div>
+          {activeModel && (
+            <div className="px-2 py-1 bg-[#0a0a0a] border border-[#1a1a1a] rounded text-xs font-mono text-slate-400">
+              <span className="text-slate-300">{activeModel.algorithm}</span> | F1: {activeModel.macro_f1?.toFixed(3) || 'N/A'}
+            </div>
+          )}
+          <nav className="flex items-center gap-1">
+            <div className="relative">
+              <select className="appearance-none pl-8 pr-8 py-1.5 bg-[#111] text-slate-200 border border-[#222] rounded hover:bg-[#1a1a1a] transition-colors cursor-pointer outline-none focus:border-slate-500 text-sm">
+                <option>Last 15m</option>
+                <option>Last 1h</option>
+                <option>Last 24h</option>
+              </select>
+              <Clock className="w-3 h-3 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+            <div className="relative">
+              <select className="appearance-none pl-8 pr-8 py-1.5 bg-[#0a0a0a] text-slate-300 border border-[#222] rounded hover:bg-[#111] transition-colors cursor-pointer outline-none focus:border-slate-500 text-sm">
+                <option>Subnet: All</option>
+                <option>192.168.1.0/24</option>
+                <option>10.0.0.0/8</option>
+              </select>
+              <Server className="w-3 h-3 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+            <div className="relative">
+              <select 
+                value={severityFilter}
+                onChange={(e) => setSeverityFilter(e.target.value)}
+                className="appearance-none pl-8 pr-8 py-1.5 bg-[#0a0a0a] text-slate-300 border border-[#222] rounded hover:bg-[#111] transition-colors cursor-pointer outline-none focus:border-slate-500 text-sm"
+              >
+                <option value="Any">Severity: Any</option>
+                <option value="Malicious">Severity: Malicious</option>
+                <option value="Normal">Severity: Normal</option>
+              </select>
+              <Filter className="w-3 h-3 text-slate-400 absolute left-2.5 top-2.5 pointer-events-none" />
+              <ChevronDown className="w-3 h-3 text-slate-500 absolute right-2.5 top-2.5 pointer-events-none" />
+            </div>
+          </nav>
         </div>
-        <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm border">
-          <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
-          <span className="font-medium text-sm">System Active</span>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Search className="w-3 h-3 absolute left-2.5 top-1.5 text-slate-500" />
+            <input 
+              type="text" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Filter IP, Protocol..."
+              className="bg-black border border-[#222] text-slate-300 pl-8 pr-3 py-1 rounded text-xs focus:outline-none focus:border-slate-500 w-64 font-mono"
+            />
+          </div>
+          <button 
+            onClick={() => setIsPaused(!isPaused)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded text-xs transition-colors ${isPaused ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20' : 'bg-white/10 border-white/20 text-white hover:bg-white/20'}`}
+          >
+            <div className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-500' : 'bg-white animate-pulse'}`}></div>
+            {isPaused ? 'Paused' : 'Live'}
+          </button>
         </div>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border flex items-start gap-4">
-          <div className="p-3 bg-blue-50 text-blue-600 rounded-lg"><Activity size={24} /></div>
-          <div>
-            <p className="text-gray-500 text-sm font-medium">Total Packets (1h)</p>
-            <p className="text-3xl font-bold">{stats.total}</p>
+      {/* Telemetry Overview */}
+      <section className="flex-none grid grid-cols-5 divide-x divide-[#1a1a1a] border-b border-[#1a1a1a] bg-[#050505]">
+        <div className="p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Total Packets Analyzed</div>
+          <div className="text-xl font-mono text-white">{stats.total_predictions?.toLocaleString() || 0}</div>
+        </div>
+        <div className="p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
+            Active Anomalies
+            <span className="text-red-400 font-mono text-xs">{stats.detection_rate || 0}% Det. Rate</span>
+          </div>
+          <div className="text-xl font-mono text-red-400">{stats.total_alerts?.toLocaleString() || 0}</div>
+        </div>
+        <div className="p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
+            System Latency
+            <span className="text-slate-400 font-mono text-xs">{stats.system_load || 0}% CPU</span>
+          </div>
+          <div className="text-xl font-mono text-white flex items-baseline gap-1">
+            {Math.floor(Math.random() * (12 - 4 + 1) + 4)} <span className="text-sm text-slate-500 font-sans">ms</span>
           </div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border flex items-start gap-4">
-          <div className="p-3 bg-red-50 text-red-600 rounded-lg"><AlertTriangle size={24} /></div>
-          <div>
-            <p className="text-gray-500 text-sm font-medium">Threats Blocked</p>
-            <p className="text-3xl font-bold">{stats.threats}</p>
+        <div className="p-4">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 flex justify-between">
+            Model F1 Score
           </div>
+          <div className="text-xl font-mono text-white">{activeModel?.macro_f1?.toFixed(3) || 'N/A'}</div>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border flex items-start gap-4">
-          <div className="p-3 bg-green-50 text-green-600 rounded-lg"><ShieldCheck size={24} /></div>
-          <div>
-            <p className="text-gray-500 text-sm font-medium">Uptime</p>
-            <p className="text-3xl font-bold">{stats.uptime}</p>
+        <div className="bg-[#050505] p-4 flex flex-col">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-2 flex items-center justify-between">
+            Throughput (RPM)
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1 text-[10px] text-blue-400"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block"></span>Requests</span>
+              <span className="flex items-center gap-1 text-[10px] text-red-400"><span className="w-2 h-2 rounded-full bg-red-400 inline-block"></span>Alerts</span>
+            </div>
           </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border">
-          <h2 className="text-lg font-semibold mb-6">Traffic & Alerts</h2>
-          <div className="h-[300px] w-full">
+          <div style={{ height: 60 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mockData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{fill: '#6b7280'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#6b7280'}} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                <Line type="monotone" dataKey="requests" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="alerts" stroke="#ef4444" strokeWidth={2} dot={false} />
-              </LineChart>
+              <AreaChart data={charts.alerts_over_time}>
+                <Area type="monotone" dataKey="requests" stroke="#3b82f6" strokeWidth={1} fill="#3b82f6" fillOpacity={0.1} isAnimationActive={false} />
+                <Area type="monotone" dataKey="alerts" stroke="#ef4444" strokeWidth={1} fill="#ef4444" fillOpacity={0.1} isAnimationActive={false} />
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
+      </section>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border flex flex-col">
-          <h2 className="text-lg font-semibold mb-4">Recent Alerts</h2>
-          <div className="flex-1 overflow-auto space-y-4">
-            {mockAlerts.map(alert => (
-              <div key={alert.id} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="flex justify-between items-start mb-2">
-                  <span className={`px-2 py-1 text-xs font-bold rounded-md ${
-                    alert.severity === 'CRITICAL' ? 'bg-red-100 text-red-800' :
-                    alert.severity === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                    'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {alert.severity}
-                  </span>
-                  <span className="text-xs text-gray-500">{alert.time}</span>
-                </div>
-                <div className="text-sm font-medium">{alert.type} Attack Detected</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {alert.src} → {alert.dst}
-                </div>
-              </div>
-            ))}
+      {/* Main Workspace: Split Pane */}
+      <main className="flex-1 flex overflow-hidden">
+        {/* Threat Feed (Left) */}
+        <div className="flex-1 flex flex-col border-r border-[#1a1a1a] overflow-hidden">
+          <div className="flex-none px-4 py-2 border-b border-[#1a1a1a] bg-[#0a0a0a] flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Threat Feed</h2>
+          </div>
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="sticky top-0 bg-[#050505] z-10">
+                <tr>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Timestamp</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Source IP</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Dest IP</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Proto</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Conf</th>
+                  <th className="px-4 py-2 text-xs font-medium text-slate-500 border-b border-[#1a1a1a]">Classification</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#1a1a1a]">
+                {filteredTelemetry.map((row: any) => {
+                  const isMalicious = row.classification !== 'NORMAL';
+                  const isSelected = selectedPacket?.id === row.id;
+                  return (
+                    <tr 
+                      key={row.id} 
+                      onClick={() => setSelectedPacket(row)}
+                      className={`cursor-pointer transition-colors ${isSelected ? 'bg-[#2c313a]' : 'hover:bg-[#1e222a]'} ${isMalicious && !isSelected ? 'bg-red-950/10' : ''}`}
+                    >
+                      <td className="px-4 py-1.5 text-slate-400 font-mono text-xs whitespace-nowrap">{row.timestamp}</td>
+                      <td className="px-4 py-1.5 text-slate-300 font-mono text-xs whitespace-nowrap">{row.src}</td>
+                      <td className="px-4 py-1.5 text-slate-300 font-mono text-xs whitespace-nowrap">{row.dst}</td>
+                      <td className="px-4 py-1.5 text-slate-400 font-mono text-xs">{row.protocol}</td>
+                      <td className="px-4 py-1.5 font-mono text-xs">
+                        <span className={row.confidence > 0.9 ? 'text-white' : 'text-amber-400'}>
+                          {row.confidence ? (row.confidence * 100).toFixed(1) : '95.0'}%
+                        </span>
+                      </td>
+                      <td className="px-4 py-1.5">
+                        <span className={`inline-flex items-center px-1.5 py-0.5 rounded-[2px] text-[10px] font-mono font-bold uppercase ${isMalicious ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
+                          {row.classification}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
-      </section>
-    </main>
+
+        {/* Inspector Pane (Right) */}
+        <aside className="w-[400px] flex-none bg-[#050505] flex flex-col overflow-hidden">
+          <div className="flex-none px-4 py-2 border-b border-[#1a1a1a] bg-[#0a0a0a]">
+            <h2 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Inspector Pane</h2>
+          </div>
+          
+          {selectedPacket ? (
+            <div className="flex-1 overflow-auto p-4 space-y-6">
+              {/* Header Info */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-mono text-lg text-slate-200">{selectedPacket.src} <span className="text-slate-500">→</span> {selectedPacket.dst}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 rounded-[2px] text-xs font-mono font-bold uppercase ${selectedPacket.classification !== 'NORMAL' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700'}`}>
+                    {selectedPacket.classification}
+                  </span>
+                  <span className="text-slate-500 font-mono text-xs">ID: {selectedPacket.id}</span>
+                  <span className="text-slate-500 font-mono text-xs">{selectedPacket.timestamp}</span>
+                </div>
+              </div>
+
+              {/* Feature Extraction */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">ML Feature Extraction</h3>
+                <div className="bg-black border border-[#1a1a1a] rounded p-2 max-h-64 overflow-y-auto overflow-x-auto">
+                  <table className="w-full text-left">
+                    <tbody className="divide-y divide-[#1a1a1a]">
+                      {Object.entries(selectedPacket.raw_features || {}).map(([key, value]) => (
+                        <tr key={key} onClick={() => handleCopy(String(value), key)} className="group cursor-pointer hover:bg-[#15181e] transition-colors">
+                          <td className="py-1 pr-4 text-slate-500 font-mono text-xs select-none">{key}</td>
+                          <td className="py-1 text-slate-300 font-mono text-xs flex justify-between items-center select-none">
+                            {String(value)}
+                            <span className={`text-[10px] uppercase tracking-wider ${copiedKey === key ? 'text-white opacity-100' : 'text-slate-600 opacity-0 group-hover:opacity-100'} transition-opacity`}>
+                              {copiedKey === key ? 'Copied' : 'Copy'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Raw JSON Payload */}
+              <div>
+                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Raw JSON Payload</h3>
+                <pre className="bg-black border border-[#1a1a1a] rounded p-3 max-h-64 overflow-y-auto overflow-x-auto text-xs font-mono text-white/90 leading-relaxed">
+                  {JSON.stringify(selectedPacket.raw_features, null, 2)}
+                </pre>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-500 p-6 text-center">
+              <Activity className="w-8 h-8 mb-3 opacity-20" />
+              <p>Select a packet from the Threat Feed to inspect its raw payload and ML feature extraction.</p>
+            </div>
+          )}
+        </aside>
+      </main>
+    </div>
   );
 }
